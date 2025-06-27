@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Water Damage Assessment - IICRC Compliant</title>
+    <title>Water Damage Assessment - IICRC S500 Compliant</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -371,6 +371,30 @@
         .class-2 { background: #ed8936; color: white; }
         .class-3 { background: #e53e3e; color: white; }
         .class-4 { background: #9f7aea; color: white; }
+
+        /* Auto-save notification styles */
+        @keyframes slideDown {
+            from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+        }
+
+        .auto-save-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #48bb78;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .auto-save-indicator.show {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -381,6 +405,10 @@
             <div class="progress-bar">
                 <div class="progress-fill" id="progressBar"></div>
             </div>
+        </div>
+
+        <div class="auto-save-indicator" id="autoSaveIndicator">
+            ✓ Saved
         </div>
 
         <div class="content">
@@ -691,7 +719,7 @@
     </div>
 
     <script>
-        // Application State
+        // Application State with Auto-Save
         let currentStep = 1;
         let totalSteps = 6;
         let selectedRooms = ['laundry', 'hallway', 'master_bedroom', 'dining_room'];
@@ -700,22 +728,151 @@
         let allPhotos = [];
         let environmentalData = {};
 
-        // Initialize app
-        document.addEventListener('DOMContentLoaded', function() {
-            updateProgress();
-            getEnvironmentalData();
-            initializeRoomSelection();
-        });
+        // Auto-save functionality
+        function saveProgress() {
+            const progressData = {
+                currentStep,
+                selectedRooms,
+                currentRoomIndex,
+                roomData,
+                environmentalData,
+                timestamp: new Date().toISOString(),
+                // Collect current form data
+                formData: gatherCurrentFormData()
+            };
+            sessionStorage.setItem('waterAssessmentProgress', JSON.stringify(progressData));
+            showAutoSaveIndicator();
+        }
 
-        // Weather API integration using OpenWeather API with debugging
+        function gatherCurrentFormData() {
+            const formData = {};
+            const inputs = document.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                if (input.type === 'checkbox') {
+                    formData[input.id] = input.checked;
+                } else if (input.type !== 'file') {
+                    formData[input.id] = input.value;
+                }
+            });
+            return formData;
+        }
+
+        function loadProgress() {
+            const saved = sessionStorage.getItem('waterAssessmentProgress');
+            if (saved) {
+                try {
+                    const progressData = JSON.parse(saved);
+                    const savedTime = new Date(progressData.timestamp);
+                    const now = new Date();
+                    const hoursDiff = (now - savedTime) / (1000 * 60 * 60);
+                    
+                    if (hoursDiff < 4) {
+                        currentStep = progressData.currentStep;
+                        selectedRooms = progressData.selectedRooms || ['laundry', 'hallway', 'master_bedroom', 'dining_room'];
+                        currentRoomIndex = progressData.currentRoomIndex || 0;
+                        roomData = progressData.roomData || {};
+                        environmentalData = progressData.environmentalData || {};
+                        
+                        // Restore form values
+                        if (progressData.formData) {
+                            Object.keys(progressData.formData).forEach(key => {
+                                const element = document.getElementById(key);
+                                if (element) {
+                                    if (element.type === 'checkbox') {
+                                        element.checked = progressData.formData[key];
+                                    } else {
+                                        element.value = progressData.formData[key];
+                                    }
+                                }
+                            });
+                        }
+                        
+                        // Update room selection
+                        updateRoomSelection();
+                        
+                        // Show the correct step
+                        document.querySelectorAll('.step').forEach(step => step.classList.remove('active'));
+                        document.getElementById(`step${currentStep}`).classList.add('active');
+                        updateProgress();
+                        
+                        // Show recovery message
+                        showRecoveryMessage();
+                    }
+                } catch (error) {
+                    console.error('Error loading saved progress:', error);
+                }
+            }
+        }
+
+        function updateRoomSelection() {
+            document.querySelectorAll('.room-card').forEach(card => {
+                if (selectedRooms.includes(card.dataset.room)) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
+                }
+            });
+        }
+
+        function showRecoveryMessage() {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #48bb78;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                z-index: 1000;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                animation: slideDown 0.5s ease;
+            `;
+            notification.innerHTML = `
+                <strong>✅ Progress Restored!</strong><br>
+                Continuing from Step ${currentStep}
+            `;
+            
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+
+        function showAutoSaveIndicator() {
+            const indicator = document.getElementById('autoSaveIndicator');
+            indicator.classList.add('show');
+            setTimeout(() => indicator.classList.remove('show'), 2000);
+        }
+
+        function setupAutoSave() {
+            document.addEventListener('input', debounce(saveProgress, 1000));
+            document.addEventListener('change', saveProgress);
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function clearProgress() {
+            sessionStorage.removeItem('waterAssessmentProgress');
+        }
+
+        // Weather API integration using OpenWeather API
         async function getEnvironmentalData() {
             console.log('Starting weather data fetch...');
             
             try {
-                // Using OpenWeather API for Navarre, FL area
                 const apiKey = '8f55419e9cfa47b2e39ed197ec1fcf90';
-                const lat = 30.4081; // Navarre, FL latitude
-                const lon = -87.0692; // Navarre, FL longitude
+                const lat = 30.4081;
+                const lon = -87.0692;
                 
                 const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`;
                 console.log('Fetching from:', url);
@@ -733,11 +890,8 @@
                 if (data.main) {
                     const temp = Math.round(data.main.temp);
                     const humidity = data.main.humidity;
-                    const pressure = (data.main.pressure * 0.02953).toFixed(2); // Convert hPa to inHg
-                    
-                    // Calculate GPP (Grains Per Pound)
+                    const pressure = (data.main.pressure * 0.02953).toFixed(2);
                     const gpp = calculateGPP(temp, humidity);
-                    console.log('Calculated GPP:', gpp, 'for temp:', temp, 'humidity:', humidity);
                     
                     document.getElementById('outsideTemp').textContent = temp + '°F';
                     document.getElementById('outsideHumidity').textContent = humidity + '%';
@@ -753,7 +907,6 @@
                 console.error('Weather data error:', error);
                 console.log('Using fallback weather data for Gulf Coast area');
                 
-                // Fallback to reasonable defaults for Gulf Coast area
                 const temp = 87;
                 const humidity = 65;
                 const pressure = 30.09;
@@ -766,7 +919,6 @@
                 
                 environmentalData = { temp, humidity, pressure, gpp };
                 
-                // Show user that we're using estimated data
                 const tempElement = document.getElementById('outsideTemp');
                 tempElement.title = 'Using estimated data - API unavailable';
                 tempElement.style.opacity = '0.8';
@@ -775,26 +927,54 @@
 
         // Calculate Grains Per Pound (GPP) - Fixed formula
         function calculateGPP(tempF, rh) {
-            // Convert Fahrenheit to Celsius for calculation
             const tempC = (tempF - 32) * 5/9;
-            
-            // Calculate saturation vapor pressure using Antoine equation (more accurate)
             const saturationPressure = 6.112 * Math.exp((17.67 * tempC) / (tempC + 243.5));
-            
-            // Calculate actual vapor pressure
             const actualVaporPressure = (rh / 100) * saturationPressure;
-            
-            // Convert kPa to psia for calculation
             const actualVaporPressurePsia = actualVaporPressure * 0.145038;
             const atmosphericPressurePsia = 14.696;
-            
-            // Calculate humidity ratio (pounds moisture per pound dry air)
             const humidityRatio = 0.622 * (actualVaporPressurePsia / (atmosphericPressurePsia - actualVaporPressurePsia));
-            
-            // Convert to grains per pound (1 pound = 7000 grains)
             const gpp = Math.round(humidityRatio * 7000);
-            
             return gpp;
+        }
+
+        // Navigation functions
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                saveProgress();
+                document.getElementById(`step${currentStep}`).classList.remove('active');
+                currentStep++;
+                
+                if (currentStep === 2) {
+                    if (environmentalData.temp && environmentalData.humidity) {
+                        document.getElementById('indoorTemp').value = environmentalData.temp;
+                        document.getElementById('indoorHumidity').value = environmentalData.humidity;
+                    }
+                } else if (currentStep === 4 && currentRoomIndex === 0) {
+                    setupRoomAssessment();
+                } else if (currentStep === 5) {
+                    generateEquipmentRecommendations();
+                } else if (currentStep === 6) {
+                    generateFinalSummary();
+                }
+                
+                document.getElementById(`step${currentStep}`).classList.add('active');
+                updateProgress();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 1) {
+                saveProgress();
+                document.getElementById(`step${currentStep}`).classList.remove('active');
+                currentStep--;
+                document.getElementById(`step${currentStep}`).classList.add('active');
+                updateProgress();
+            }
+        }
+
+        function updateProgress() {
+            const progress = (currentStep / totalSteps) * 100;
+            document.getElementById('progressBar').style.width = progress + '%';
         }
 
         // Room selection logic
@@ -804,6 +984,7 @@
                 card.addEventListener('click', function() {
                     this.classList.toggle('selected');
                     updateSelectedRooms();
+                    saveProgress();
                 });
             });
         }
@@ -865,45 +1046,6 @@
             container.appendChild(newReading);
         }
 
-        // Navigation functions
-        function nextStep() {
-            if (currentStep < totalSteps) {
-                document.getElementById(`step${currentStep}`).classList.remove('active');
-                currentStep++;
-                
-                if (currentStep === 2) {
-                    // Auto-populate indoor conditions from environmental data when reaching step 2
-                    if (environmentalData.temp && environmentalData.humidity) {
-                        document.getElementById('indoorTemp').value = environmentalData.temp;
-                        document.getElementById('indoorHumidity').value = environmentalData.humidity;
-                    }
-                } else if (currentStep === 4 && currentRoomIndex === 0) {
-                    setupRoomAssessment();
-                } else if (currentStep === 5) {
-                    generateEquipmentRecommendations();
-                } else if (currentStep === 6) {
-                    generateFinalSummary();
-                }
-                
-                document.getElementById(`step${currentStep}`).classList.add('active');
-                updateProgress();
-            }
-        }
-
-        function prevStep() {
-            if (currentStep > 1) {
-                document.getElementById(`step${currentStep}`).classList.remove('active');
-                currentStep--;
-                document.getElementById(`step${currentStep}`).classList.add('active');
-                updateProgress();
-            }
-        }
-
-        function updateProgress() {
-            const progress = (currentStep / totalSteps) * 100;
-            document.getElementById('progressBar').style.width = progress + '%';
-        }
-
         // Room assessment setup
         function setupRoomAssessment() {
             if (currentRoomIndex < selectedRooms.length) {
@@ -911,14 +1053,12 @@
                 document.getElementById('currentRoomTitle').textContent = `${roomName} Assessment`;
                 document.getElementById('currentRoomGuidance').textContent = `Room ${currentRoomIndex + 1} of ${selectedRooms.length}: Document all conditions and moisture readings for proper IICRC classification.`;
                 
-                // Clear previous room data
                 document.getElementById('photoPreview').innerHTML = '';
                 document.getElementById('roomPhotos').value = '';
             }
         }
 
         function saveRoomAndNext() {
-            // Save current room data
             const currentRoom = selectedRooms[currentRoomIndex];
             const moistureReadings = [];
             
@@ -957,28 +1097,35 @@
                 document.getElementById('roomLength').value = '';
                 document.getElementById('roomWidth').value = '';
                 document.getElementById('roomNotes').value = '';
-                document.getElementById('moistureReadings').innerHTML = `
-                    <div class="reading-input">
-                        <select class="material-type">
-                            <option value="">Material Type</option>
-                            <option value="wood_floor">Wood Flooring</option>
-                            <option value="subfloor">Subfloor</option>
-                            <option value="carpet_pad">Carpet/Pad</option>
-                            <option value="drywall_bottom">Drywall (Bottom)</option>
-                            <option value="drywall_2ft">Drywall (2ft up)</option>
-                            <option value="baseboard">Baseboard</option>
-                            <option value="concrete">Concrete</option>
-                            <option value="insulation">Insulation</option>
-                        </select>
-                        <input type="number" placeholder="% MC" class="moisture-reading">
-                        <input type="text" placeholder="Location" class="reading-location">
-                    </div>
-                `;
+                
+                // Reset moisture readings safely
+                const moistureContainer = document.getElementById('moistureReadings');
+                if (moistureContainer) {
+                    moistureContainer.innerHTML = `
+                        <div class="reading-input">
+                            <select class="material-type">
+                                <option value="">Material Type</option>
+                                <option value="wood_floor">Wood Flooring</option>
+                                <option value="subfloor">Subfloor</option>
+                                <option value="carpet_pad">Carpet/Pad</option>
+                                <option value="drywall_bottom">Drywall (Bottom)</option>
+                                <option value="drywall_2ft">Drywall (2ft up)</option>
+                                <option value="baseboard">Baseboard</option>
+                                <option value="concrete">Concrete</option>
+                                <option value="insulation">Insulation</option>
+                            </select>
+                            <input type="number" placeholder="% MC" class="moisture-reading">
+                            <input type="text" placeholder="Location" class="reading-location">
+                        </div>
+                    `;
+                }
+                
                 document.querySelectorAll('#step4 input[type="checkbox"]').forEach(cb => cb.checked = false);
                 setupRoomAssessment();
             } else {
                 nextStep();
             }
+            saveProgress();
         }
 
         // Equipment recommendations based on IICRC standards
@@ -992,12 +1139,10 @@
                 const roomDiv = document.createElement('div');
                 roomDiv.className = 'equipment-room';
                 
-                // Calculate equipment needs per IICRC standards
                 const equipment = calculateEquipmentNeeds(room);
                 totalEquipment.dehumidifiers += equipment.dehumidifiers;
                 totalEquipment.airMovers += equipment.airMovers;
 
-                // Determine water damage class
                 const damageClass = determineDamageClass(room);
                 
                 roomDiv.innerHTML = `
@@ -1020,7 +1165,6 @@
                 equipmentPlan.appendChild(roomDiv);
             });
 
-            // Add total summary
             const totalDiv = document.createElement('div');
             totalDiv.className = 'equipment-room';
             totalDiv.style.background = 'rgba(255,255,255,0.2)';
@@ -1053,7 +1197,6 @@
             const avgMoisture = room.moistureReadings.length > 0 ? 
                 room.moistureReadings.reduce((sum, reading) => sum + reading.moisture, 0) / room.moistureReadings.length : 0;
 
-            // Air mover calculation per IICRC standards
             if (area <= 100) {
                 airMovers = hasCarpet ? 2 : 1;
             } else if (area <= 300) {
@@ -1064,7 +1207,6 @@
                 airMovers = Math.ceil(area / 100);
             }
 
-            // Dehumidifier calculation
             if (area <= 500) {
                 dehumidifiers = 1;
                 dehumidifierCapacity = 'Standard (70-80 pints/day)';
@@ -1076,7 +1218,6 @@
                 dehumidifierCapacity = `${dehumidifiers} x Large units`;
             }
 
-            // Special equipment considerations
             if (hasWoodFlooring && avgMoisture > 15) {
                 specialEquipment = 'Floor mat system recommended';
             } else if (hasCarpet && avgMoisture > 20) {
@@ -1112,7 +1253,6 @@
             const insights = document.getElementById('keyInsights');
             const summary = document.getElementById('assessmentSummary');
 
-            // Generate insights
             const totalArea = Object.values(roomData).reduce((sum, room) => sum + room.area, 0);
             const totalRooms = Object.keys(roomData).length;
             const primaryFlooring = getMostCommonFlooring();
@@ -1128,7 +1268,6 @@
                 <p><strong>🎯 Recommended Action:</strong> ${getRecommendedAction(primaryClass, highestMoisture)}</p>
             `;
 
-            // Generate detailed summary
             let summaryHTML = `
                 <p><strong>Job Details:</strong></p>
                 <p>• Address: ${document.getElementById('jobAddress').value}</p>
@@ -1191,7 +1330,6 @@
         async function sendReport() {
             document.getElementById('sendingReport').classList.add('active');
             
-            // Prepare email data
             const emailData = {
                 to: ['jeannie@borestorationofbaldwincounty.com', 'zac@borestorationofbaldwincounty.com'],
                 subject: `Water Damage Assessment - ${document.getElementById('jobAddress').value}`,
@@ -1200,14 +1338,12 @@
             };
 
             try {
-                // Simulate email sending (in real implementation, use EmailJS or backend API)
                 await new Promise(resolve => setTimeout(resolve, 3000));
                 
                 document.getElementById('sendingReport').classList.remove('active');
                 document.getElementById('reportSent').style.display = 'block';
                 
-                // In real implementation, replace with actual email service:
-                // await emailjs.send('service_id', 'template_id', emailData);
+                clearProgress();
                 
             } catch (error) {
                 document.getElementById('sendingReport').classList.remove('active');
@@ -1283,12 +1419,17 @@ Total Photos Attached: ${allPhotos.length}
         }
 
         function generatePDF() {
-            // In a real implementation, you would generate a PDF here
             alert('PDF generation would be implemented with a library like jsPDF. For now, use the email report.');
         }
 
         // Initialize the app
-        updateProgress();
+        document.addEventListener('DOMContentLoaded', function() {
+            setupAutoSave();
+            loadProgress();
+            updateProgress();
+            getEnvironmentalData();
+            initializeRoomSelection();
+        });
     </script>
 </body>
 </html>
