@@ -707,16 +707,28 @@
             initializeRoomSelection();
         });
 
-        // Weather API integration using OpenWeather API
+        // Weather API integration using OpenWeather API with debugging
         async function getEnvironmentalData() {
+            console.log('Starting weather data fetch...');
+            
             try {
                 // Using OpenWeather API for Navarre, FL area
                 const apiKey = '8f55419e9cfa47b2e39ed197ec1fcf90';
                 const lat = 30.4081; // Navarre, FL latitude
                 const lon = -87.0692; // Navarre, FL longitude
                 
-                const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`);
+                const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`;
+                console.log('Fetching from:', url);
+                
+                const response = await fetch(url);
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('Weather data received:', data);
                 
                 if (data.main) {
                     const temp = Math.round(data.main.temp);
@@ -725,6 +737,7 @@
                     
                     // Calculate GPP (Grains Per Pound)
                     const gpp = calculateGPP(temp, humidity);
+                    console.log('Calculated GPP:', gpp, 'for temp:', temp, 'humidity:', humidity);
                     
                     document.getElementById('outsideTemp').textContent = temp + '°F';
                     document.getElementById('outsideHumidity').textContent = humidity + '%';
@@ -732,18 +745,31 @@
                     document.getElementById('outsideGPP').textContent = gpp + ' gr/lb';
                     
                     environmentalData = { temp, humidity, pressure, gpp };
+                    console.log('Environmental data set:', environmentalData);
                 } else {
-                    throw new Error('Invalid API response');
+                    throw new Error('Invalid API response - no main data');
                 }
             } catch (error) {
-                console.error('Weather data unavailable:', error);
-                // Fallback to reasonable defaults for Gulf Coast area
-                document.getElementById('outsideTemp').textContent = '78°F';
-                document.getElementById('outsideHumidity').textContent = '65%';
-                document.getElementById('outsidePressure').textContent = '30.12 inHg';
-                document.getElementById('outsideGPP').textContent = '95 gr/lb';
+                console.error('Weather data error:', error);
+                console.log('Using fallback weather data for Gulf Coast area');
                 
-                environmentalData = { temp: 78, humidity: 65, pressure: 30.12, gpp: 95 };
+                // Fallback to reasonable defaults for Gulf Coast area
+                const temp = 87;
+                const humidity = 65;
+                const pressure = 30.09;
+                const gpp = calculateGPP(temp, humidity);
+                
+                document.getElementById('outsideTemp').textContent = temp + '°F';
+                document.getElementById('outsideHumidity').textContent = humidity + '%';
+                document.getElementById('outsidePressure').textContent = pressure + ' inHg';
+                document.getElementById('outsideGPP').textContent = gpp + ' gr/lb';
+                
+                environmentalData = { temp, humidity, pressure, gpp };
+                
+                // Show user that we're using estimated data
+                const tempElement = document.getElementById('outsideTemp');
+                tempElement.title = 'Using estimated data - API unavailable';
+                tempElement.style.opacity = '0.8';
             }
         }
 
@@ -845,7 +871,13 @@
                 document.getElementById(`step${currentStep}`).classList.remove('active');
                 currentStep++;
                 
-                if (currentStep === 4 && currentRoomIndex === 0) {
+                if (currentStep === 2) {
+                    // Auto-populate indoor conditions from environmental data when reaching step 2
+                    if (environmentalData.temp && environmentalData.humidity) {
+                        document.getElementById('indoorTemp').value = environmentalData.temp;
+                        document.getElementById('indoorHumidity').value = environmentalData.humidity;
+                    }
+                } else if (currentStep === 4 && currentRoomIndex === 0) {
                     setupRoomAssessment();
                 } else if (currentStep === 5) {
                     generateEquipmentRecommendations();
