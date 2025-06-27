@@ -747,12 +747,28 @@
             }
         }
 
-        // Calculate Grains Per Pound
-        function calculateGPP(temp, rh) {
-            const saturationPressure = 6.112 * Math.exp((17.67 * ((temp - 32) * 5/9)) / (((temp - 32) * 5/9) + 243.5));
+        // Calculate Grains Per Pound (GPP) - Fixed formula
+        function calculateGPP(tempF, rh) {
+            // Convert Fahrenheit to Celsius for calculation
+            const tempC = (tempF - 32) * 5/9;
+            
+            // Calculate saturation vapor pressure using Antoine equation (more accurate)
+            const saturationPressure = 6.112 * Math.exp((17.67 * tempC) / (tempC + 243.5));
+            
+            // Calculate actual vapor pressure
             const actualVaporPressure = (rh / 100) * saturationPressure;
-            const humidityRatio = 0.622 * (actualVaporPressure / (14.696 - actualVaporPressure));
-            return Math.round(humidityRatio * 7000);
+            
+            // Convert kPa to psia for calculation
+            const actualVaporPressurePsia = actualVaporPressure * 0.145038;
+            const atmosphericPressurePsia = 14.696;
+            
+            // Calculate humidity ratio (pounds moisture per pound dry air)
+            const humidityRatio = 0.622 * (actualVaporPressurePsia / (atmosphericPressurePsia - actualVaporPressurePsia));
+            
+            // Convert to grains per pound (1 pound = 7000 grains)
+            const gpp = Math.round(humidityRatio * 7000);
+            
+            return gpp;
         }
 
         // Room selection logic
